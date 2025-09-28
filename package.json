@@ -3,13 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://BRN1505.github.io/connerly-2/",
+  "homepage": "https://brn1505.github.io/connerly-2/",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "build": "vite build --outDir docs",
+    "preview": "vite preview"
   },
   "dependencies": {
     "react": "^19.1.1",
@@ -17,8 +15,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.14.0",
-    "gh-pages": "^6.3.0",
-    "typescript": "~5.8.2",
+    "typescript": "^5.8.2",
     "vite": "^6.2.0"
   }
 }
