@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { User, UserRole, Page, Creator, Brand, Admin, Job, JobStatus, CreatorCategory, SocialProfile, ScoutOffer, ScoutOfferStatus, SubscriptionStatus, PaymentStatus, Notification, ChatMessage } from './types';
-import { ADMIN_EMAIL } from './constants';
+
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { User, UserRole, Page, Creator, Brand, Admin, Job, JobStatus, CreatorCategory, SocialProfile, ScoutOffer, ScoutOfferStatus, SubscriptionStatus, PaymentStatus, Notification, ChatMessage, InboxNotification } from './types';
+import { ADMIN_EMAIL, HIGH_FOLLOWER_THRESHOLD } from './constants';
 
 import Header from './components/Header';
 import HomePage from './pages/HomePage';
@@ -17,23 +18,23 @@ const initialCreators: Creator[] = [
       socials: [
         { platform: 'Instagram', followerCount: 25000, profileUrl: 'https://instagram.com/rinasato' }
       ], 
-      categories: [CreatorCategory.FASHION, CreatorCategory.BEAUTY] },
+      categories: [CreatorCategory.FASHION, CreatorCategory.BEAUTY], isVerified: true },
     { id: 'c2', role: UserRole.CREATOR, name: '田中 健太', email: 'kenta.tanaka@example.com', password: 'password123',
       socials: [
         { platform: 'YouTube', followerCount: 120000, profileUrl: 'https://youtube.com/kentatanaka' }
       ],
-      categories: [CreatorCategory.GAMING, CreatorCategory.DIY] },
+      categories: [CreatorCategory.GAMING, CreatorCategory.DIY], isVerified: true },
     { id: 'c3', role: UserRole.CREATOR, name: '鈴木 ゆい', email: 'yui.suzuki@example.com', password: 'password123',
       socials: [
         { platform: 'TikTok', followerCount: 500000, profileUrl: 'https://tiktok.com/yuisuzuki' },
         { platform: 'Instagram', followerCount: 80000, profileUrl: 'https://instagram.com/yuisuzuki_travel' },
       ],
-      categories: [CreatorCategory.FOOD, CreatorCategory.TRAVEL, 'ペット'] },
+      categories: [CreatorCategory.FOOD, CreatorCategory.TRAVEL, 'ペット'], isVerified: true },
 ];
 
 const initialBrands: Brand[] = [
-    { id: 'b1', role: UserRole.BRAND, name: 'NextWear Apparel', email: 'contact@nextwear.com', password: 'password123', subscriptionStatus: 'active' },
-    { id: 'b2', role: UserRole.BRAND, name: 'Gourmet Box Japan', email: 'support@gourmetbox.jp', password: 'password123', subscriptionStatus: 'inactive' },
+    { id: 'b1', role: UserRole.BRAND, name: 'NextWear Apparel', email: 'contact@nextwear.com', password: 'password123', subscriptionStatus: 'active', isVerified: true },
+    { id: 'b2', role: UserRole.BRAND, name: 'Gourmet Box Japan', email: 'support@gourmetbox.jp', password: 'password123', subscriptionStatus: 'inactive', isVerified: true },
 ];
 
 const initialJobs: Job[] = [
@@ -51,6 +52,8 @@ const initialChatMessages: ChatMessage[] = [
     { id: 'msg2', jobId: 'j1', senderId: 'c1', senderName: '佐藤 リナ', text: 'ご連絡ありがとうございます！はい、来週ですと火曜日以降でしたら調整可能です。', timestamp: new Date(new Date().getTime() - 1000 * 60 * 60 * 23) }
 ];
 
+const initialInboxNotifications: InboxNotification[] = [];
+
 
 const adminUser: Admin = { id: 'admin1', role: UserRole.ADMIN, name: '管理者', email: ADMIN_EMAIL, password: 'Ariel1550' };
 
@@ -67,7 +70,12 @@ function loadStateFromLocalStorage<T>(key: string, defaultValue: T, reviver?: (k
 }
 
 // --- Login/Register Forms (defined outside App to avoid re-renders) ---
-function LoginForm({ onLogin }: { onLogin: (email: string, password: string) => void }) {
+
+// FIX: Refactored to a named interface for props to improve type safety.
+interface LoginFormProps {
+    onLogin: (email: string, password: string) => void;
+}
+function LoginForm({ onLogin }: LoginFormProps) {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     return (
@@ -85,7 +93,12 @@ function LoginForm({ onLogin }: { onLogin: (email: string, password: string) => 
     );
 }
 
-function RegisterForm({ onRegister }: { onRegister: (data: any, role: UserRole) => void }) {
+// FIX: Refactored to a named interface for props to improve type safety.
+interface RegisterFormProps {
+    onRegister: (data: any, role: UserRole) => void;
+}
+
+function RegisterForm({ onRegister }: RegisterFormProps) {
     const [role, setRole] = useState<UserRole.CREATOR | UserRole.BRAND>(UserRole.CREATOR);
     // Common fields
     const [name, setName] = useState('');
@@ -103,8 +116,22 @@ function RegisterForm({ onRegister }: { onRegister: (data: any, role: UserRole) 
         setCategories(prev => prev.includes(category) ? prev.filter(c => c !== category) : [...prev, category]);
     };
     
+    // FIX: Updated handleSocialChange to be type-safe and prevent assignment errors.
     const handleSocialChange = (index: number, field: keyof SocialProfile, value: string | number) => {
-        const newSocials = socials.map((social, i) => i === index ? { ...social, [field]: value } : social);
+        const newSocials = socials.map((social, i) => {
+            if (i === index) {
+                const updatedSocial = { ...social };
+                if (field === 'followerCount') {
+                    updatedSocial.followerCount = typeof value === 'number' ? value : Number(value) || 0;
+                } else if (field === 'platform') {
+                    updatedSocial.platform = String(value);
+                } else if (field === 'profileUrl') {
+                    updatedSocial.profileUrl = String(value);
+                }
+                return updatedSocial;
+            }
+            return social;
+        });
         setSocials(newSocials);
     };
 
@@ -262,11 +289,15 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>(() => loadStateFromLocalStorage('connerly_jobs', initialJobs, dateReviver));
   const [scoutOffers, setScoutOffers] = useState<ScoutOffer[]>(() => loadStateFromLocalStorage('connerly_scoutOffers', initialScoutOffers, dateReviver));
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => loadStateFromLocalStorage('connerly_chatMessages', initialChatMessages, dateReviver));
+  const [inboxNotifications, setInboxNotifications] = useState<InboxNotification[]>(() => loadStateFromLocalStorage('connerly_inboxNotifications', initialInboxNotifications, dateReviver));
+  
+  const [verificationTokens, setVerificationTokens] = useState<Record<string, string>>(() => loadStateFromLocalStorage('connerly_tokens', {}));
 
 
   const [isLoginModalOpen, setLoginModalOpen] = useState(false);
   const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [showVerificationMessageFor, setShowVerificationMessageFor] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -275,10 +306,12 @@ export default function App() {
         localStorage.setItem('connerly_jobs', JSON.stringify(jobs));
         localStorage.setItem('connerly_scoutOffers', JSON.stringify(scoutOffers));
         localStorage.setItem('connerly_chatMessages', JSON.stringify(chatMessages));
+        localStorage.setItem('connerly_inboxNotifications', JSON.stringify(inboxNotifications));
+        localStorage.setItem('connerly_tokens', JSON.stringify(verificationTokens));
     } catch(e) {
         console.error("Failed to save state to localStorage", e);
     }
-  }, [creators, brands, jobs, scoutOffers, chatMessages]);
+  }, [creators, brands, jobs, scoutOffers, chatMessages, inboxNotifications, verificationTokens]);
 
   const removeNotification = useCallback((id: string) => {
     setNotifications(prev => prev.filter(n => n.id !== id));
@@ -289,12 +322,69 @@ export default function App() {
     setNotifications(prev => [...prev, { id, message, type }]);
   }, []);
 
+  const handleVerifyEmail = useCallback((token: string) => {
+    const userId = verificationTokens[token];
+    if (!userId) {
+        addNotification('無効な認証トークンです。', 'error');
+        return;
+    }
+
+    let userToVerify: User | undefined;
+    
+    const updatedCreators = creators.map(c => {
+        if (c.id === userId) {
+            userToVerify = { ...c, isVerified: true };
+            return userToVerify as Creator;
+        }
+        return c;
+    });
+    
+    if(userToVerify) {
+        setCreators(updatedCreators);
+    } else {
+        const updatedBrands = brands.map(b => {
+            if (b.id === userId) {
+                userToVerify = { ...b, isVerified: true };
+                return userToVerify as Brand;
+            }
+            return b;
+        });
+        setBrands(updatedBrands);
+    }
+    
+    if (userToVerify) {
+        setCurrentUser(userToVerify);
+        setPage(Page.DASHBOARD);
+        addNotification('メールアドレスが認証されました！', 'success');
+        
+        const newTokens = { ...verificationTokens };
+        delete newTokens[token];
+        setVerificationTokens(newTokens);
+    } else {
+        addNotification('認証対象のユーザーが見つかりませんでした。', 'error');
+    }
+}, [verificationTokens, creators, brands, addNotification]);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('verify_token');
+    if (token) {
+        handleVerifyEmail(token);
+        // Clean up URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [handleVerifyEmail]);
+
 
   const handleLogin = (email: string, password: string) => {
       const allUsers: User[] = [...creators, ...brands, adminUser];
       const foundUser = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
       
       if (foundUser && foundUser.password === password) {
+          if ('isVerified' in foundUser && !foundUser.isVerified) {
+              alert('アカウントがまだ有効化されていません。登録時に送信されたメールを確認してください。');
+              return;
+          }
           setCurrentUser(foundUser);
           setPage(Page.DASHBOARD);
           setLoginModalOpen(false);
@@ -304,26 +394,49 @@ export default function App() {
   };
 
   const handleRegister = (data: any, role: UserRole) => {
-      let newUser: User;
+      const existingUser = [...creators, ...brands].find(u => u.email.toLowerCase() === data.email.toLowerCase());
+      if (existingUser) {
+          alert('このメールアドレスは既に使用されています。');
+          return;
+      }
+
+      const userId = role === UserRole.CREATOR ? `c${Date.now()}` : `b${Date.now()}`;
+      const token = `tok_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+
+      let newUser: Creator | Brand;
       if(role === UserRole.CREATOR) {
           newUser = {
-              id: `c${Date.now()}`,
+              id: userId,
               role,
               ...data,
+              isVerified: false
           };
-          setCreators(prev => [...prev, newUser as Creator]);
+          setCreators(prev => [...prev, newUser]);
       } else {
            newUser = {
-              id: `b${Date.now()}`,
+              id: userId,
               role,
               subscriptionStatus: 'active' as SubscriptionStatus,
               ...data,
+              isVerified: false
           };
-          setBrands(prev => [...prev, newUser as Brand]);
+          setBrands(prev => [...prev, newUser]);
       }
-      setCurrentUser(newUser);
-      setPage(Page.DASHBOARD);
+      
+      setVerificationTokens(prev => ({ ...prev, [token]: userId }));
+      
+      const verificationLink = `${window.location.origin}?verify_token=${token}`;
+
+      console.log(`--- SIMULATING EMAIL (Verification) ---`);
+      console.log(`To: ${newUser.email}`);
+      console.log(`From: system@connerly.com`);
+      console.log(`Subject: [connerly] メールアドレスの確認をお願いします`);
+      console.log(`内容: connerlyへのご登録ありがとうございます。以下のリンクをクリックしてアカウントを有効化してください。`);
+      console.log(`リンク: ${verificationLink}`);
+      console.log(`---------------------------------`);
+
       setRegisterModalOpen(false);
+      setShowVerificationMessageFor(newUser.email);
   };
   
   const handleLogout = () => {
@@ -345,6 +458,25 @@ export default function App() {
         paymentStatus: 'unpaid',
     };
     setJobs(prev => [newJob, ...prev]);
+
+    const qualifiedCreators = creators.filter(creator => {
+        const totalFollowers = creator.socials.reduce((sum, social) => sum + social.followerCount, 0);
+        return totalFollowers >= HIGH_FOLLOWER_THRESHOLD;
+    });
+
+    if (qualifiedCreators.length > 0) {
+        const newNotificationsForCreators: InboxNotification[] = qualifiedCreators.map(creator => ({
+            id: `in-${Date.now()}-${creator.id}`,
+            userId: creator.id,
+            message: `新着案件: ${newJob.brandName}が「${newJob.title}」を投稿しました。`,
+            isRead: false,
+            createdAt: new Date(),
+        }));
+        setInboxNotifications(prev => [...prev, ...newNotificationsForCreators]);
+        addNotification(`案件を投稿し、${qualifiedCreators.length}名のクリエイターに通知しました。`, 'success');
+    } else {
+        addNotification(`案件を投稿しました。`, 'success');
+    }
   };
 
   const handleApplyJob = useCallback((jobId: string) => {
@@ -492,6 +624,22 @@ export default function App() {
 
     setChatMessages(prev => [...prev, newMessage]);
   };
+  
+  const handleMarkAllAsRead = useCallback(() => {
+    if (!currentUser) return;
+    setInboxNotifications(prev =>
+        prev.map(n =>
+            n.userId === currentUser.id && !n.isRead ? { ...n, isRead: true } : n
+        )
+    );
+  }, [currentUser]);
+
+  const userInboxNotifications = useMemo(() => {
+    if (!currentUser) return [];
+    return inboxNotifications
+        .filter(n => n.userId === currentUser.id)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  }, [inboxNotifications, currentUser]);
 
 
   const renderDashboard = () => {
@@ -532,13 +680,13 @@ export default function App() {
   const renderPage = () => {
     switch(page) {
         case Page.HOME:
-            return <HomePage onRegisterClick={() => setRegisterModalOpen(true)} onGuestViewClick={() => setPage(Page.GUEST)} />;
+            return <HomePage onRegisterClick={() => setRegisterModalOpen(true)} onGuestViewClick={() => setPage(Page.GUEST)} onLoginClick={() => setLoginModalOpen(true)} />;
         case Page.DASHBOARD:
             return renderDashboard();
         case Page.GUEST:
             return <CreatorDashboard jobs={jobs} onLoginClick={() => setLoginModalOpen(true)} chatMessages={chatMessages} handleSendMessage={() => {}} />;
         default:
-            return <HomePage onRegisterClick={() => setRegisterModalOpen(true)} onGuestViewClick={() => setPage(Page.GUEST)} />;
+            return <HomePage onRegisterClick={() => setRegisterModalOpen(true)} onGuestViewClick={() => setPage(Page.GUEST)} onLoginClick={() => setLoginModalOpen(true)} />;
     }
   }
 
@@ -550,16 +698,45 @@ export default function App() {
         onLoginClick={() => setLoginModalOpen(true)}
         onRegisterClick={() => setRegisterModalOpen(true)}
         onLogoClick={() => setPage(currentUser ? Page.DASHBOARD : Page.HOME)}
+        notifications={userInboxNotifications}
+        onMarkAllAsRead={handleMarkAllAsRead}
       />
       <main>
         {renderPage()}
       </main>
 
+      {/* FIX: Added children to the Modal component as it is a required prop. */}
       <Modal isOpen={isLoginModalOpen} onClose={() => setLoginModalOpen(false)} title="ログイン">
           <LoginForm onLogin={handleLogin} />
       </Modal>
+      {/* FIX: Added children to the Modal component as it is a required prop. */}
       <Modal isOpen={isRegisterModalOpen} onClose={() => setRegisterModalOpen(false)} title="新規登録">
           <RegisterForm onRegister={handleRegister} />
+      </Modal>
+
+      {/* FIX: Added children to the Modal component as it is a required prop. */}
+      <Modal isOpen={!!showVerificationMessageFor} onClose={() => setShowVerificationMessageFor(null)} title="メールを確認してください">
+          <div className="text-center">
+            <svg className="mx-auto h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            <h3 className="mt-4 text-lg font-medium text-gray-900">ご登録ありがとうございます！</h3>
+            <p className="mt-2 text-sm text-gray-600">
+                <span className="font-semibold">{showVerificationMessageFor}</span> 宛に、アカウントを有効化するためのメールを送信しました。
+            </p>
+            <p className="mt-1 text-sm text-gray-600">
+                メール内のリンクをクリックして、登録を完了してください。
+            </p>
+            <p className="mt-4 text-xs text-gray-500">
+                (このデモでは、実際のメールは送信されません。開発者コンソールで認証リンクを確認してください。)
+            </p>
+            <button
+                onClick={() => setShowVerificationMessageFor(null)}
+                className="mt-6 inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-md shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+            >
+                閉じる
+            </button>
+          </div>
       </Modal>
 
       {/* Notification Toasts */}
