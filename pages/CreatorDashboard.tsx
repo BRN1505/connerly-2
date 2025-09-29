@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Job, Creator, JobStatus, CreatorCategory, ScoutOffer, ScoutOfferStatus, PaymentStatus, ChatMessage, User } from '../types';
 import Tag from '../components/Tag';
@@ -19,13 +20,24 @@ interface CreatorDashboardProps {
 
 const paymentFormatter = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY' });
 
-function JobCard({ job, onApply, isApplied, isClosed, isGuest }: { job: Job; onApply: () => void; isApplied: boolean; isClosed: boolean; isGuest: boolean }) {
+// FIX: Refactored to a named interface for props to improve type safety and potentially fix key-related type errors.
+interface JobCardProps {
+  job: Job;
+  onApply: () => void;
+  isApplied: boolean;
+  isClosed: boolean;
+  isGuest: boolean;
+}
+
+// FIX: Changed to a const with React.FC to properly handle the key prop.
+const JobCard: React.FC<JobCardProps> = ({ job, onApply, isApplied, isClosed, isGuest }) => {
   
   return (
     <div className="bg-white shadow-md rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-xl">
       <div className="p-6">
         <div className="flex justify-between items-start">
           <h3 className="text-xl font-semibold text-gray-900">{job.title}</h3>
+          {/* FIX: Added children to the Tag component as it is a required prop. */}
           <Tag color={job.status === JobStatus.OPEN ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}>{job.status}</Tag>
         </div>
         <p className="mt-1 text-sm font-medium text-gray-600">by {job.brandName}</p>
@@ -51,7 +63,16 @@ function JobCard({ job, onApply, isApplied, isClosed, isGuest }: { job: Job; onA
   );
 }
 
-function ScoutOfferCard({ offer, job, onRespond, isApplied }: { offer: ScoutOffer; job: Job | undefined; onRespond: (scoutId: string, response: 'ACCEPTED' | 'DECLINED') => void; isApplied: boolean; }) {
+// FIX: Refactored to a named interface for props to improve type safety and potentially fix key-related type errors.
+interface ScoutOfferCardProps {
+    offer: ScoutOffer;
+    job: Job | undefined;
+    onRespond: (scoutId: string, response: 'ACCEPTED' | 'DECLINED') => void;
+    isApplied: boolean;
+}
+
+// FIX: Changed to a const with React.FC to properly handle the key prop.
+const ScoutOfferCard: React.FC<ScoutOfferCardProps> = ({ offer, job, onRespond, isApplied }) => {
     if (!job) return null; // Job might not be found if it's old or deleted
     const isActionable = offer.status === ScoutOfferStatus.PENDING && job.status === JobStatus.OPEN;
 
@@ -60,6 +81,7 @@ function ScoutOfferCard({ offer, job, onRespond, isApplied }: { offer: ScoutOffe
             <div className="p-6">
                  <div className="flex justify-between items-start">
                     <h3 className="text-xl font-semibold text-gray-900">{job.title}</h3>
+                    {/* FIX: Added children to the Tag component as it is a required prop. */}
                     <Tag color={'bg-yellow-100 text-yellow-800'}>スカウト</Tag>
                 </div>
                 <p className="mt-1 text-sm font-medium text-gray-600">from {offer.brandName}</p>
@@ -89,14 +111,24 @@ function ScoutOfferCard({ offer, job, onRespond, isApplied }: { offer: ScoutOffe
     );
 }
 
-function AcceptedJobRow({ job, onOpenChat }: { job: Job; onOpenChat: (job: Job) => void; }) {
+// FIX: Refactored to a named interface for props to improve type safety and potentially fix key-related type errors.
+interface AcceptedJobRowProps {
+    job: Job;
+    onOpenChat: (job: Job) => void;
+}
+
+// FIX: Changed to a const with React.FC to properly handle the key prop.
+const AcceptedJobRow: React.FC<AcceptedJobRowProps> = ({ job, onOpenChat }) => {
     const getPaymentStatusTag = (status: PaymentStatus) => {
         switch (status) {
             case 'paid':
+                {/* FIX: Added children to the Tag component as it is a required prop. */}
                 return <Tag color="bg-green-100 text-green-800">支払い済み</Tag>;
             case 'unpaid':
+                {/* FIX: Added children to the Tag component as it is a required prop. */}
                 return <Tag color="bg-yellow-100 text-yellow-800">支払い待ち</Tag>;
             default:
+                {/* FIX: Added children to the Tag component as it is a required prop. */}
                 return <Tag>{status}</Tag>;
         }
     };

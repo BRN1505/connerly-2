@@ -4,6 +4,7 @@ import React from 'react';
 interface HomePageProps {
   onRegisterClick: () => void;
   onGuestViewClick: () => void;
+  onLoginClick: () => void;
 }
 
 function CheckIcon() {
@@ -14,7 +15,7 @@ function CheckIcon() {
     );
 }
 
-function HomePage({ onRegisterClick, onGuestViewClick }: HomePageProps) {
+function HomePage({ onRegisterClick, onGuestViewClick, onLoginClick }: HomePageProps) {
   return (
     <div className="bg-white">
       <main>
@@ -40,16 +41,22 @@ function HomePage({ onRegisterClick, onGuestViewClick }: HomePageProps) {
                   connerlyは、新しい才能を探すブランドと、活躍の場を求めるクリエイターを繋ぐプラットフォームです。
                 </p>
                 <div className="mt-10 max-w-sm mx-auto sm:max-w-none sm:flex sm:justify-center">
-                   <div className="space-y-4 sm:space-y-0 sm:mx-auto sm:inline-grid sm:grid-cols-2 sm:gap-5">
+                   <div className="space-y-4 sm:space-y-0 sm:mx-auto sm:inline-grid sm:grid-cols-3 sm:gap-5">
                     <button
                       onClick={onRegisterClick}
                       className="flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-indigo-600 bg-white hover:bg-indigo-50 sm:px-8"
                     >
                       今すぐに始める
                     </button>
+                    <button
+                      onClick={onLoginClick}
+                      className="flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-500 hover:bg-indigo-600 sm:px-8"
+                    >
+                      ログイン
+                    </button>
                      <button
                         onClick={onGuestViewClick}
-                        className="flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-500 hover:bg-indigo-600 sm:px-8"
+                        className="flex items-center justify-center px-8 py-3 border border-white text-base font-medium rounded-md shadow-sm text-white bg-transparent hover:bg-white/20 sm:px-8"
                     >
                       お試しで見てみる
                     </button>

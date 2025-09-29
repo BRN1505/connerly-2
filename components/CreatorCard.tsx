@@ -8,7 +8,8 @@ interface CreatorCardProps {
     onScout: (creator: Creator) => void;
 }
 
-function CreatorCard({ creator, onScout }: CreatorCardProps) {
+// FIX: Changed to a const with React.FC to properly handle the key prop.
+const CreatorCard: React.FC<CreatorCardProps> = ({ creator, onScout }) => {
     const totalFollowers = creator.socials.reduce((acc, social) => acc + social.followerCount, 0);
 
     return (
@@ -59,7 +60,7 @@ function CreatorCard({ creator, onScout }: CreatorCardProps) {
                     className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-100 text-indigo-700 font-semibold rounded-lg hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-75 transition-colors"
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-1.42 2.882a1 1 0 01-.753.547l-3.19.464a1 1 0 00-.554 1.705l2.308 2.25a1 1 0 01.287.884l-.545 3.178a1 1 0 001.451 1.054l2.852-1.5a1 1 0 01.93 0l2.852 1.5a1 1 0 001.451-1.054l-.545-3.178a1 1 0 01.287-.884l2.308-2.25a1 1 0 00-.554-1.705l-3.19-.464a1 1 0 01-.753-.547l-1.42-2.882z" />
+                        <path d="M10.894 2.553a1 1 0 00-1.788 0l-1.42 2.882a1 1 0 01-.753.547l-3.19.464a1 1 0 00-.554 1.705l2.308 2.25a1 1 0 01.287.884l-.545 3.178a1 1 0 001.451 1.054l2.852-1.5a1 1 0 01.93 0l2.852 1.5a1 1 0 001.451-1.054l-.545-3.178a1 1 0 01.287-.884l2.308-2.25a1 1 0 00-.554-1.705l-3.19-.464a1 1 0 01-.753.547l-1.42-2.882z" />
                     </svg>
                     スカウトする
                 </button>

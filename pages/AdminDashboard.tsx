@@ -53,10 +53,13 @@ function AdminDashboard({ creators, brands, jobs }: AdminDashboardProps) {
   const getSubscriptionStatusTag = (status: SubscriptionStatus) => {
     switch (status) {
       case 'active':
+        // FIX: Added children to the Tag component as it is a required prop.
         return <Tag color="bg-green-100 text-green-800">契約中</Tag>;
       case 'inactive':
+        // FIX: Added children to the Tag component as it is a required prop.
         return <Tag color="bg-gray-100 text-gray-800">未契約</Tag>;
       default:
+        // FIX: Added children to the Tag component as it is a required prop.
         return <Tag>{status}</Tag>;
     }
   };

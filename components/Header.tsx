@@ -1,5 +1,6 @@
 import React from 'react';
-import { User } from '../types';
+import { User, InboxNotification } from '../types';
+import NotificationBell from './NotificationBell';
 
 interface HeaderProps {
   user: User | null;
@@ -7,9 +8,11 @@ interface HeaderProps {
   onLoginClick: () => void;
   onRegisterClick: () => void;
   onLogoClick: () => void;
+  notifications: InboxNotification[];
+  onMarkAllAsRead: () => void;
 }
 
-function Header({ user, onLogout, onLoginClick, onRegisterClick, onLogoClick }: HeaderProps) {
+function Header({ user, onLogout, onLoginClick, onRegisterClick, onLogoClick, notifications, onMarkAllAsRead }: HeaderProps) {
   return (
     <header className="bg-white shadow-sm sticky top-0 z-50">
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -25,6 +28,7 @@ function Header({ user, onLogout, onLoginClick, onRegisterClick, onLogoClick }: 
           <div className="flex items-center space-x-4">
             {user ? (
               <>
+                <NotificationBell notifications={notifications} onMarkAllAsRead={onMarkAllAsRead} />
                 <span className="text-sm text-gray-600 hidden sm:block">こんにちは、{user.name}さん</span>
                 <button
                   onClick={onLogout}

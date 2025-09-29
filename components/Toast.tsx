@@ -1,3 +1,4 @@
+
 import React, { useEffect } from 'react';
 import { Notification } from '../types';
 
@@ -25,7 +26,8 @@ const ICONS = {
 };
 
 
-function Toast({ notification, onClose }: ToastProps) {
+// FIX: Changed to a const with React.FC to properly handle the key prop.
+const Toast: React.FC<ToastProps> = ({ notification, onClose }) => {
   useEffect(() => {
     const timer = setTimeout(() => {
       onClose(notification.id);
