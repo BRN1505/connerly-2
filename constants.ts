@@ -49,3 +49,4 @@ export const JOB_TEMPLATES: JobTemplate[] = [
 
 export const ADMIN_EMAIL = 'connerly.0811@gmail.com';
 export const BRAND_MONTHLY_FEE = 20000;
+export const HIGH_FOLLOWER_THRESHOLD = 50000;
