@@ -1,7 +1,10 @@
 
+import AuthBox from "./AuthBox";
+import AdminGate from "./AdminGate";
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserRole, Page, Creator, Brand, Admin, Job, JobStatus, CreatorCategory, SocialProfile, ScoutOffer, ScoutOfferStatus, SubscriptionStatus, PaymentStatus, Notification, ChatMessage, InboxNotification } from './types';
 import { ADMIN_EMAIL, HIGH_FOLLOWER_THRESHOLD } from './constants';
+import * as api from './api/supabaseAPI';
 
 import Header from './components/Header';
 import HomePage from './pages/HomePage';
@@ -55,7 +58,7 @@ const initialChatMessages: ChatMessage[] = [
 const initialInboxNotifications: InboxNotification[] = [];
 
 
-const adminUser: Admin = { id: 'admin1', role: UserRole.ADMIN, name: '管理者', email: ADMIN_EMAIL, password: 'Ariel1550' };
+const adminUser: Admin = { id: 'admin1', role: UserRole.ADMIN, name: '管理者', email: "connerly.0811@gmail.com", password: 'Ariel1550' };
 
 function loadStateFromLocalStorage<T>(key: string, defaultValue: T, reviver?: (key: string, value: any) => any): T {
     try {
@@ -81,6 +84,15 @@ function LoginForm({ onLogin }: LoginFormProps) {
     return (
         <form onSubmit={(e) => { e.preventDefault(); onLogin(email, password); }} className="space-y-4">
             <div>
+                <AuthBox />
+
+<AdminGate>
+  <section style={{ marginTop: 24, padding: 16, border: "1px solid #ddd" }}>
+    <h2>管理者タブ</h2>
+    <p>ここに管理者専用の操作を置く。</p>
+  </section>
+</AdminGate>
+
                 <label htmlFor="email-login" className="block text-sm font-medium text-gray-700">メールアドレス</label>
                 <input type="email" id="email-login" value={email} onChange={e => setEmail(e.target.value)} required className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" />
             </div>
@@ -292,7 +304,32 @@ export default function App() {
   const [inboxNotifications, setInboxNotifications] = useState<InboxNotification[]>(() => loadStateFromLocalStorage('connerly_inboxNotifications', initialInboxNotifications, dateReviver));
   
   const [verificationTokens, setVerificationTokens] = useState<Record<string, string>>(() => loadStateFromLocalStorage('connerly_tokens', {}));
+// Supabaseからデータを読み込む
+useEffect(() => {
+  async function loadData() {
+    try {
+      const [creatorsData, brandsData, jobsData, scoutOffersData, chatData, notificationsData] = await Promise.all([
+        api.getAllCreators(),
+        api.getAllBrands(),
+        api.getAllJobs(),
+        api.getAllScoutOffers(),
+        api.getAllChatMessages(),
+        api.getAllNotifications()
+      ]);
 
+      setCreators(creatorsData);
+      setBrands(brandsData);
+      setJobs(jobsData);
+      setScoutOffers(scoutOffersData);
+      setChatMessages(chatData);
+      setInboxNotifications(notificationsData);
+    } catch (error) {
+      console.error('データ読み込みエラー:', error);
+    }
+  }
+
+  loadData();
+}, []);
 
   const [isLoginModalOpen, setLoginModalOpen] = useState(false);
   const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
@@ -376,69 +413,54 @@ export default function App() {
   }, [handleVerifyEmail]);
 
 
-  const handleLogin = (email: string, password: string) => {
-      const allUsers: User[] = [...creators, ...brands, adminUser];
-      const foundUser = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
-      
-      if (foundUser && foundUser.password === password) {
-          if ('isVerified' in foundUser && !foundUser.isVerified) {
-              alert('アカウントがまだ有効化されていません。登録時に送信されたメールを確認してください。');
-              return;
-          }
-          setCurrentUser(foundUser);
-          setPage(Page.DASHBOARD);
-          setLoginModalOpen(false);
-      } else {
-          alert('メールアドレスまたはパスワードが正しくありません。');
-      }
-  };
+  const handleLogin = async (email: string, password: string) => {
+  try {
+    const foundUser = await api.loginUser(email, password);
+    
+    if ('isVerified' in foundUser && !foundUser.isVerified) {
+      alert('アカウントがまだ有効化されていません。登録時に送信されたメールを確認してください。');
+      return;
+    }
+    
+    setCurrentUser(foundUser);
+    setPage(Page.DASHBOARD);
+    setLoginModalOpen(false);
+  } catch (error) {
+    console.error('ログインエラー:', error);
+    alert('メールアドレスまたはパスワードが正しくありません。');
+  }
+};
 
-  const handleRegister = (data: any, role: UserRole) => {
-      const existingUser = [...creators, ...brands].find(u => u.email.toLowerCase() === data.email.toLowerCase());
-      if (existingUser) {
-          alert('このメールアドレスは既に使用されています。');
-          return;
-      }
+const handleRegister = async (data: any, role: UserRole) => {
+  try {
+    const existingUser = [...creators, ...brands].find(u => u.email.toLowerCase() === data.email.toLowerCase());
+    if (existingUser) {
+      alert('このメールアドレスは既に使用されています。');
+      return;
+    }
 
-      const userId = role === UserRole.CREATOR ? `c${Date.now()}` : `b${Date.now()}`;
-      const token = `tok_${Date.now()}_${Math.random().toString(36).substring(2)}`;
+    const newUser = await api.registerUser(data, role);
+    
+    // ローカルstateも更新
+    if (role === UserRole.CREATOR) {
+      const creatorWithDetails = {
+        ...newUser,
+        socials: data.socials || [],
+        categories: data.categories || []
+      };
+      setCreators(prev => [...prev, creatorWithDetails]);
+    } else {
+      setBrands(prev => [...prev, newUser]);
+    }
 
-      let newUser: Creator | Brand;
-      if(role === UserRole.CREATOR) {
-          newUser = {
-              id: userId,
-              role,
-              ...data,
-              isVerified: false
-          };
-          setCreators(prev => [...prev, newUser]);
-      } else {
-           newUser = {
-              id: userId,
-              role,
-              subscriptionStatus: 'active' as SubscriptionStatus,
-              ...data,
-              isVerified: false
-          };
-          setBrands(prev => [...prev, newUser]);
-      }
-      
-      setVerificationTokens(prev => ({ ...prev, [token]: userId }));
-      
-      const verificationLink = `${window.location.origin}?verify_token=${token}`;
+    setRegisterModalOpen(false);
+    setShowVerificationMessageFor(newUser.email);
+  } catch (error) {
+    console.error('登録エラー:', error);
+    alert('登録に失敗しました。');
+  }
 
-      console.log(`--- SIMULATING EMAIL (Verification) ---`);
-      console.log(`To: ${newUser.email}`);
-      console.log(`From: system@connerly.com`);
-      console.log(`Subject: [connerly] メールアドレスの確認をお願いします`);
-      console.log(`内容: connerlyへのご登録ありがとうございます。以下のリンクをクリックしてアカウントを有効化してください。`);
-      console.log(`リンク: ${verificationLink}`);
-      console.log(`---------------------------------`);
-
-      setRegisterModalOpen(false);
-      setShowVerificationMessageFor(newUser.email);
-  };
-  
+};
   const handleLogout = () => {
     setCurrentUser(null);
     setPage(Page.HOME);

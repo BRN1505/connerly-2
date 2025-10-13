@@ -1,4 +1,4 @@
-
+console.log("🟢 index.tsx loaded");
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
@@ -14,3 +14,11 @@ root.render(
     <App />
   </React.StrictMode>
 );
+import { supabase } from "./supabaseClient";
+
+async function checkConnection() {
+  const { data, error } = await supabase.auth.getUser();
+  console.log("Supabase接続テスト:", { data, error });
+}
+
+checkConnection();
