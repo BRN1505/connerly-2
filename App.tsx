@@ -466,57 +466,84 @@ const handleRegister = async (data: any, role: UserRole) => {
     setPage(Page.HOME);
   };
 
-  const handlePostJob = (jobData: { title: string; description: string; payment: number; numberOfCreators: number; }) => {
-    if (currentUser?.role !== UserRole.BRAND) return;
-    const newJob: Job = {
-        id: `j${Date.now()}`,
-        brandId: currentUser.id,
-        brandName: currentUser.name,
-        ...jobData,
-        status: JobStatus.OPEN,
-        createdAt: new Date(),
-        applicants: [],
-        selectedCreatorIds: [],
-        paymentStatus: 'unpaid',
-    };
-    setJobs(prev => [newJob, ...prev]);
-
-    const qualifiedCreators = creators.filter(creator => {
-        const totalFollowers = creator.socials.reduce((sum, social) => sum + social.followerCount, 0);
-        return totalFollowers >= HIGH_FOLLOWER_THRESHOLD;
+const handlePostJob = async (jobData: { title: string; description: string; payment: number; numberOfCreators: number; }) => {
+  if (currentUser?.role !== UserRole.BRAND) return;
+  
+  try {
+    // Supabaseに案件を保存
+    const newJob = await api.postJob({
+      brandId: currentUser.id,
+      brandName: currentUser.name,
+      title: jobData.title,
+      description: jobData.description,
+      payment: jobData.payment,
+      numberOfCreators: jobData.numberOfCreators
     });
 
-    if (qualifiedCreators.length > 0) {
-        const newNotificationsForCreators: InboxNotification[] = qualifiedCreators.map(creator => ({
-            id: `in-${Date.now()}-${creator.id}`,
-            userId: creator.id,
-            message: `新着案件: ${newJob.brandName}が「${newJob.title}」を投稿しました。`,
-            isRead: false,
-            createdAt: new Date(),
-        }));
-        setInboxNotifications(prev => [...prev, ...newNotificationsForCreators]);
-        addNotification(`案件を投稿し、${qualifiedCreators.length}名のクリエイターに通知しました。`, 'success');
-    } else {
-        addNotification(`案件を投稿しました。`, 'success');
-    }
-  };
+    // ローカルstateを更新
+    const jobWithDetails = {
+      id: newJob.id,
+      brandId: newJob.brand_id,
+      brandName: newJob.brand_name,
+      title: newJob.title,
+      description: newJob.description,
+      payment: newJob.payment,
+      numberOfCreators: newJob.number_of_creators,
+      status: newJob.status as JobStatus,
+      paymentStatus: newJob.payment_status as PaymentStatus,
+      createdAt: new Date(newJob.created_at),
+      applicants: [],
+      selectedCreatorIds: []
+    };
+    setJobs(prev => [jobWithDetails, ...prev]);
 
-  const handleApplyJob = useCallback((jobId: string) => {
-    if (currentUser?.role !== UserRole.CREATOR) {
-        setLoginModalOpen(true);
-        return;
+    // フォロワー数の多いクリエイターに通知
+    const qualifiedCreators = creators.filter(creator => {
+      const totalFollowers = creator.socials.reduce((sum, social) => sum + social.followerCount, 0);
+      return totalFollowers >= HIGH_FOLLOWER_THRESHOLD;
+    });
+
+    // 各クリエイターに通知を作成
+    for (const creator of qualifiedCreators) {
+      await api.createNotification(
+        creator.id,
+        `新着案件: ${newJob.brand_name}が「${newJob.title}」を投稿しました。`
+      );
     }
+
+    // 通知を再読み込み
+    const notificationsData = await api.getAllNotifications();
+    setInboxNotifications(notificationsData);
+
+    addNotification(`案件を投稿しました。`, 'success');
+  } catch (error) {
+    console.error('案件投稿エラー:', error);
+    addNotification('案件の投稿に失敗しました。', 'error');
+  }
+};
+
+const handleApplyJob = useCallback(async (jobId: string) => {
+  if (currentUser?.role !== UserRole.CREATOR) {
+    setLoginModalOpen(true);
+    return;
+  }
+  
+  try {
     const creatorId = currentUser.id;
     const job = jobs.find(j => j.id === jobId);
     const brand = brands.find(b => b.id === job?.brandId);
 
+    // Supabaseに応募を保存
+    await api.applyToJob(jobId, creatorId);
+
+    // ローカルstateを更新
     setJobs(prevJobs => prevJobs.map(j => {
-        if (j.id === jobId && !j.applicants.includes(creatorId)) {
-            return { ...j, applicants: [...j.applicants, creatorId] };
-        }
-        return j;
+      if (j.id === jobId && !j.applicants.includes(creatorId)) {
+        return { ...j, applicants: [...j.applicants, creatorId] };
+      }
+      return j;
     }));
-    
+
     if (job && brand) {
       console.log(`--- SIMULATING EMAIL (Apply) ---`);
       console.log(`To: ${brand.email}`);
@@ -526,77 +553,116 @@ const handleRegister = async (data: any, role: UserRole) => {
       console.log(`---------------------------------`);
       addNotification(`「${job.title}」に応募しました。${brand.name}に通知が送信されます。`);
     }
-  }, [currentUser, jobs, brands, addNotification]);
+  } catch (error) {
+    console.error('応募エラー:', error);
+    addNotification('応募に失敗しました。', 'error');
+  }
+}, [currentUser, jobs, brands, addNotification]);
 
-  const handleSelectCreator = (jobId: string, creatorId: string) => {
-      const job = jobs.find(j => j.id === jobId);
-      const creator = creators.find(c => c.id === creatorId);
+const handleSelectCreator = async (jobId: string, creatorId: string) => {
+  try {
+    const job = jobs.find(j => j.id === jobId);
+    const creator = creators.find(c => c.id === creatorId);
 
-      setJobs(prevJobs => prevJobs.map(j => {
-          if (j.id === jobId && !j.selectedCreatorIds.includes(creatorId)) {
-              const newSelectedIds = [...j.selectedCreatorIds, creatorId];
-              const isJobFilled = newSelectedIds.length >= j.numberOfCreators;
-              
-              return { 
-                  ...j, 
-                  selectedCreatorIds: newSelectedIds, 
-                  status: isJobFilled ? JobStatus.CLOSED : JobStatus.IN_PROGRESS 
-              };
-          }
-          return j;
-      }));
+    // Supabaseにクリエイター選択を保存
+    await api.selectCreator(jobId, creatorId);
 
-      if(job && creator) {
-        console.log(`--- SIMULATING EMAIL (Match) ---`);
-        console.log(`To: ${creator.email}`);
-        console.log(`From: system@connerly.com`);
-        console.log(`Subject: [connerly] おめでとうございます！案件に採用されました`);
-        console.log(`内容: ${job.brandName}の案件「${job.title}」に採用されました。今後の流れについてはブランドからの連絡をお待ちください。`);
-        console.log(`--------------------------------`);
-        addNotification(`${creator.name}さんを「${job.title}」の案件に選定しました。`);
-    }
-  };
+    // ローカルstateを更新
+    setJobs(prevJobs => prevJobs.map(j => {
+      if (j.id === jobId && !j.selectedCreatorIds.includes(creatorId)) {
+        const newSelectedIds = [...j.selectedCreatorIds, creatorId];
+        const isJobFilled = newSelectedIds.length >= j.numberOfCreators;
+        
+        return { 
+          ...j, 
+          selectedCreatorIds: newSelectedIds, 
+          status: isJobFilled ? JobStatus.CLOSED : JobStatus.IN_PROGRESS 
+        };
+      }
+      return j;
+    }));
 
-  const handleScoutCreator = (creatorId: string, jobId: string, message: string) => {
-      if (currentUser?.role !== UserRole.BRAND) return;
-      
-      const creator = creators.find(c => c.id === creatorId);
-      if (!creator) return;
-
-      const newScoutOffer: ScoutOffer = {
-          id: `so${Date.now()}`,
-          brandId: currentUser.id,
-          brandName: currentUser.name,
-          creatorId,
-          jobId,
-          message,
-          status: ScoutOfferStatus.PENDING,
-          createdAt: new Date(),
-      };
-      setScoutOffers(prev => [...prev, newScoutOffer]);
-      
-      console.log(`--- SIMULATING EMAIL (Scout) ---`);
+    if (job && creator) {
+      console.log(`--- SIMULATING EMAIL (Match) ---`);
       console.log(`To: ${creator.email}`);
       console.log(`From: system@connerly.com`);
-      console.log(`Subject: [connerly] ${currentUser.name}からスカウトが届いています`);
-      console.log(`内容: ${currentUser.name}からスカウトが届きました。ダッシュボードからメッセージを確認し、応募をご検討ください。`);
-      console.log(`---------------------------------`);
-      addNotification(`${creator.name}さんをスカウトしました。通知が送信されます。`);
-  };
+      console.log(`Subject: [connerly] おめでとうございます!案件に採用されました`);
+      console.log(`内容: ${job.brandName}の案件「${job.title}」に採用されました。今後の流れについてはブランドからの連絡をお待ちください。`);
+      console.log(`--------------------------------`);
+      addNotification(`${creator.name}さんを「${job.title}」の案件に選定しました。`);
+    }
+  } catch (error) {
+    console.error('クリエイター選択エラー:', error);
+    addNotification('クリエイターの選択に失敗しました。', 'error');
+  }
+};
 
-  const handleRespondToScout = (scoutId: string, response: 'ACCEPTED' | 'DECLINED') => {
-      const offer = scoutOffers.find(o => o.id === scoutId);
-      if (!offer || currentUser?.role !== UserRole.CREATOR) return;
-      
-      setScoutOffers(prev => prev.map(o => o.id === scoutId ? {...o, status: ScoutOfferStatus[response]} : o));
+const handleScoutCreator = async (creatorId: string, jobId: string, message: string) => {
+  if (currentUser?.role !== UserRole.BRAND) return;
+  
+  try {
+    const creator = creators.find(c => c.id === creatorId);
+    if (!creator) return;
 
-      if (response === 'ACCEPTED') {
-          handleApplyJob(offer.jobId);
-          addNotification("スカウトを承諾し、案件に応募しました。");
-      } else {
-          addNotification("スカウトを辞退しました。", "info");
-      }
-  };
+    // Supabaseにスカウトオファーを保存
+    const newScoutOffer = await api.sendScoutOffer({
+      brandId: currentUser.id,
+      brandName: currentUser.name,
+      creatorId,
+      jobId,
+      message
+    });
+
+    // ローカルstateを更新
+    const scoutOfferWithDetails = {
+      id: newScoutOffer.id,
+      brandId: newScoutOffer.brand_id,
+      brandName: newScoutOffer.brand_name,
+      creatorId: newScoutOffer.creator_id,
+      jobId: newScoutOffer.job_id,
+      message: newScoutOffer.message,
+      status: newScoutOffer.status as ScoutOfferStatus,
+      createdAt: new Date(newScoutOffer.created_at)
+    };
+    setScoutOffers(prev => [...prev, scoutOfferWithDetails]);
+    
+    console.log(`--- SIMULATING EMAIL (Scout) ---`);
+    console.log(`To: ${creator.email}`);
+    console.log(`From: system@connerly.com`);
+    console.log(`Subject: [connerly] ${currentUser.name}からスカウトが届いています`);
+    console.log(`内容: ${currentUser.name}からスカウトが届きました。ダッシュボードからメッセージを確認し、応募をご検討ください。`);
+    console.log(`---------------------------------`);
+    addNotification(`${creator.name}さんをスカウトしました。通知が送信されます。`);
+  } catch (error) {
+    console.error('スカウトエラー:', error);
+    addNotification('スカウトの送信に失敗しました。', 'error');
+  }
+};
+
+const handleRespondToScout = async (scoutId: string, response: 'ACCEPTED' | 'DECLINED') => {
+  try {
+    const offer = scoutOffers.find(o => o.id === scoutId);
+    if (!offer || currentUser?.role !== UserRole.CREATOR) return;
+    
+    // Supabaseでスカウトステータスを更新
+    await api.respondToScoutOffer(scoutId, response);
+
+    // ローカルstateを更新
+    setScoutOffers(prev => prev.map(o => 
+      o.id === scoutId ? {...o, status: ScoutOfferStatus[response]} : o
+    ));
+
+    if (response === 'ACCEPTED') {
+      await handleApplyJob(offer.jobId);
+      addNotification("スカウトを承諾し、案件に応募しました。");
+    } else {
+      addNotification("スカウトを辞退しました。", "info");
+    }
+  } catch (error) {
+    console.error('スカウト返信エラー:', error);
+    addNotification('スカウトへの返信に失敗しました。', 'error');
+  }
+};
 
   const handleSubscribe = () => {
     if (currentUser?.role !== UserRole.BRAND) return;
@@ -609,11 +675,22 @@ const handleRegister = async (data: any, role: UserRole) => {
     setBrands(updatedBrands);
   };
   
-  const handlePayJob = (jobId: string) => {
+const handlePayJob = async (jobId: string) => {
+  try {
+    // Supabaseで支払いステータスを更新
+    await api.updateJobPaymentStatus(jobId, 'paid');
+
+    // ローカルstateを更新
     setJobs(prevJobs => prevJobs.map(job => 
-        job.id === jobId ? { ...job, paymentStatus: 'paid' as PaymentStatus } : job
+      job.id === jobId ? { ...job, paymentStatus: 'paid' as PaymentStatus } : job
     ));
-  };
+
+    addNotification('支払いステータスを更新しました。', 'success');
+  } catch (error) {
+    console.error('支払い更新エラー:', error);
+    addNotification('支払いステータスの更新に失敗しました。', 'error');
+  }
+};
   
   const handleCancelSubscription = (reason: string, feedback: string) => {
     if (currentUser?.role !== UserRole.BRAND) return;
@@ -632,29 +709,51 @@ const handleRegister = async (data: any, role: UserRole) => {
     setBrands(updatedBrands);
   };
 
-  const handleSendMessage = (jobId: string, text: string) => {
-    if (!currentUser || !text.trim()) return;
+const handleSendMessage = async (jobId: string, text: string) => {
+  if (!currentUser || !text.trim()) return;
 
-    const newMessage: ChatMessage = {
-        id: `msg-${Date.now()}`,
-        jobId,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        text: text.trim(),
-        timestamp: new Date(),
+  try {
+    // Supabaseにメッセージを保存
+    const newMessage = await api.sendMessage({
+      jobId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      text: text.trim()
+    });
+
+    // ローカルstateを更新
+    const messageWithDetails = {
+      id: newMessage.id,
+      jobId: newMessage.job_id,
+      senderId: newMessage.sender_id,
+      senderName: newMessage.sender_name,
+      text: newMessage.text,
+      timestamp: new Date(newMessage.timestamp)
     };
-
-    setChatMessages(prev => [...prev, newMessage]);
-  };
+    setChatMessages(prev => [...prev, messageWithDetails]);
+  } catch (error) {
+    console.error('メッセージ送信エラー:', error);
+    addNotification('メッセージの送信に失敗しました。', 'error');
+  }
+};
   
-  const handleMarkAllAsRead = useCallback(() => {
-    if (!currentUser) return;
+const handleMarkAllAsRead = useCallback(async () => {
+  if (!currentUser) return;
+  
+  try {
+    // Supabaseで通知を既読にする
+    await api.markNotificationsAsRead(currentUser.id);
+
+    // ローカルstateを更新
     setInboxNotifications(prev =>
-        prev.map(n =>
-            n.userId === currentUser.id && !n.isRead ? { ...n, isRead: true } : n
-        )
+      prev.map(n =>
+        n.userId === currentUser.id && !n.isRead ? { ...n, isRead: true } : n
+      )
     );
-  }, [currentUser]);
+  } catch (error) {
+    console.error('通知既読エラー:', error);
+  }
+}, [currentUser]);
 
   const userInboxNotifications = useMemo(() => {
     if (!currentUser) return [];
