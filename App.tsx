@@ -467,9 +467,11 @@ const handleRegister = async (data: any, role: UserRole) => {
   };
 
 const handlePostJob = async (jobData: { title: string; description: string; payment: number; numberOfCreators: number; }) => {
+  console.log('🔥 handlePostJob が呼ばれました!', jobData); 
   if (currentUser?.role !== UserRole.BRAND) return;
   
   try {
+    console.log('📤 Supabaseに送信開始...');
     // Supabaseに案件を保存
     const newJob = await api.postJob({
       brandId: currentUser.id,
@@ -479,6 +481,8 @@ const handlePostJob = async (jobData: { title: string; description: string; paym
       payment: jobData.payment,
       numberOfCreators: jobData.numberOfCreators
     });
+
+    console.log('✅ Supabaseから返ってきたデータ:', newJob); 
 
     // ローカルstateを更新
     const jobWithDetails = {
