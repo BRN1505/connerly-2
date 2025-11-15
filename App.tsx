@@ -5,8 +5,12 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { User, UserRole, Page, Creator, Brand, Admin, Job, JobStatus, CreatorCategory, SocialProfile, ScoutOffer, ScoutOfferStatus, SubscriptionStatus, PaymentStatus, Notification, ChatMessage, InboxNotification } from './types';
 import { ADMIN_EMAIL, HIGH_FOLLOWER_THRESHOLD } from './constants';
 import * as api from './api/supabaseAPI';
+import { supabase } from './supabaseClient'; 
+import StripeCheckout from './StripeCheckout';
+import { sendWelcomeEmail } from './utils/email';
 
 import Header from './components/Header';
+import Footer from './components/Footer';
 import HomePage from './pages/HomePage';
 import CreatorDashboard from './pages/CreatorDashboard';
 import BrandDashboard from './pages/BrandDashboard';
@@ -335,6 +339,8 @@ useEffect(() => {
   const [isRegisterModalOpen, setRegisterModalOpen] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [showVerificationMessageFor, setShowVerificationMessageFor] = useState<string | null>(null);
+  const [showPayment, setShowPayment] = useState(false);
+  const [pendingBrandData, setPendingBrandData] = useState<any>(null);
 
   useEffect(() => {
     try {
@@ -441,6 +447,12 @@ const handleRegister = async (data: any, role: UserRole) => {
 
     const newUser = await api.registerUser(data, role);
     
+// デバッグ用
+    console.log('🔍 newUser の中身:', newUser);
+    console.log('🔍 newUser.id:', newUser.id);
+    console.log('🔍 newUser.email:', newUser.email);
+    console.log('🔍 data:', data);
+
     // ローカルstateも更新
     if (role === UserRole.CREATOR) {
       const creatorWithDetails = {
@@ -449,17 +461,65 @@ const handleRegister = async (data: any, role: UserRole) => {
         categories: data.categories || []
       };
       setCreators(prev => [...prev, creatorWithDetails]);
+      // ✅ クリエイターにウェルカムメールを送信
+      await sendWelcomeEmail(data.email, data.name, 'creator');
+      setRegisterModalOpen(false);
+      setShowVerificationMessageFor(newUser.email);
+
     } else {
-      setBrands(prev => [...prev, newUser]);
+      setPendingBrandData({ 
+        userId: newUser.id,
+        email: data.email,
+        name: data.name  
+       });
+      setShowPayment(true);
+      setRegisterModalOpen(false);
+      return;
     }
 
-    setRegisterModalOpen(false);
-    setShowVerificationMessageFor(newUser.email);
   } catch (error) {
     console.error('登録エラー:', error);
     alert('登録に失敗しました。');
   }
 
+};
+
+const handlePaymentSuccess = async () => {
+  try {
+    if (!pendingBrandData) return;
+    
+    // Supabaseでブランドのsubscription_statusをactiveに更新
+    const { data: updatedUser, error } = await supabase
+      .from('users')
+      .update({ 
+        is_verified: true,
+        subscription_status: 'active' 
+      })
+      .eq('email', pendingBrandData.email)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    // ローカルstateを更新
+    setBrands(prev => [...prev, updatedUser]);
+
+    // ✅ ブランドにウェルカムメールを送信
+    await sendWelcomeEmail(pendingBrandData.email, pendingBrandData.name, 'brand');
+    
+    // 決済画面を閉じて、成功メッセージを表示
+    setShowPayment(false);
+    setPendingBrandData(null);
+    setRegisterModalOpen(false);
+    addNotification('登録が完了しました!ログインしてください。', 'success');
+  } catch (error) {
+    console.error('アカウント有効化エラー:', error);
+    addNotification('登録処理に失敗しました。', 'error');
+  }
+};
+
+const handlePaymentError = (error: string) => {
+  addNotification(`決済エラー: ${error}`, 'error');
 };
   const handleLogout = () => {
     setCurrentUser(null);
@@ -816,7 +876,7 @@ const handleMarkAllAsRead = useCallback(async () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       <Header 
         user={currentUser} 
         onLogout={handleLogout} 
@@ -826,9 +886,10 @@ const handleMarkAllAsRead = useCallback(async () => {
         notifications={userInboxNotifications}
         onMarkAllAsRead={handleMarkAllAsRead}
       />
-      <main>
+      <main className="flex-1"> 
         {renderPage()}
       </main>
+      <Footer />
 
       {/* FIX: Added children to the Modal component as it is a required prop. */}
       <Modal isOpen={isLoginModalOpen} onClose={() => setLoginModalOpen(false)} title="ログイン">
@@ -863,6 +924,24 @@ const handleMarkAllAsRead = useCallback(async () => {
             </button>
           </div>
       </Modal>
+
+      {/* 決済画面モーダル */}
+<Modal 
+  isOpen={showPayment} 
+  onClose={() => {
+    setShowPayment(false);
+    setPendingBrandData(null);
+  }} 
+  title="お支払い"
+>
+  {pendingBrandData && (
+    <StripeCheckout 
+      email={pendingBrandData.email}
+      onSuccess={handlePaymentSuccess}
+      onError={handlePaymentError}
+    />
+  )}
+</Modal>
 
       {/* Notification Toasts */}
       <div
