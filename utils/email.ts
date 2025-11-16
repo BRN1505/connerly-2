@@ -1,48 +1,37 @@
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
 export async function sendWelcomeEmail(email: string, name: string, role: 'creator' | 'brand') {
-  // 開発中はコンソールにログを出力（実際のメールは送信しない）
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('📧 ウェルカムメール送信（シミュレート）');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`📬 宛先: ${email}`);
-  console.log(`👤 名前: ${name}`);
-  console.log(`🎭 役割: ${role === 'creator' ? 'クリエイター' : 'ブランド'}`);
-  console.log(`📝 件名: Connerly へようこそ！${role === 'creator' ? 'クリエイター' : 'ブランド'}としてのご登録ありがとうございます`);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  
-  const content = role === 'creator'
-    ? `
-    ようこそ、${name}さん！
-    Connerly へのご登録、誠にありがとうございます。
-    クリエイターとしてのアカウントが正常に作成されました。
+  try {
+    console.log('📧 ウェルカムメール送信中...');
+    console.log(`📬 宛先: ${email}`);
+    console.log(`👤 名前: ${name}`);
+    console.log(`🎭 役割: ${role === 'creator' ? 'クリエイター' : 'ブランド'}`);
+
+    // Supabase Edge Function を呼び出し
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/send-welcome-email`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ email, name, role }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'メール送信に失敗しました');
+    }
+
+    const data = await response.json();
+    console.log('✅ ウェルカムメール送信成功:', data);
     
-    次のステップ：
-    - プロフィールを充実させましょう
-    - 興味のある案件を探してみましょう
-    - ブランドからのスカウトを待ちましょう
-    `
-    : `
-    ようこそ、${name}さん！
-    Connerly へのご登録、誠にありがとうございます。
-    ブランドとしてのアカウントが正常に作成され、月額プランの決済が完了いたしました。
-    
-    次のステップ：
-    - 案件を投稿してクリエイターを募集しましょう
-    - クリエイターを検索してスカウトしましょう
-    - 理想のクリエイターとマッチングしましょう
-    `;
-  
-  console.log('📄 メール内容:');
-  console.log(content);
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('✅ メール送信シミュレート完了');
-  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-  
-  // 本番環境では、バックエンドAPIを呼び出してメールを送信
-  // const response = await fetch('YOUR_BACKEND_API/send-email', {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json' },
-  //   body: JSON.stringify({ email, name, role })
-  // });
-  
-  return true;
+    return true;
+  } catch (error) {
+    console.error('❌ メール送信エラー:', error);
+    return false;
+  }
 }
