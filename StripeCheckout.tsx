@@ -12,11 +12,12 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY!);
 
 interface CheckoutFormProps {
   email: string;
+  userId: string;
   onSuccess: () => void;
   onError: (error: string) => void;
 }
 
-function CheckoutForm({ email, onSuccess, onError }: CheckoutFormProps) {
+function CheckoutForm({ email, userId, onSuccess, onError }: CheckoutFormProps) {
   const stripe = useStripe();
   const elements = useElements();
   const [processing, setProcessing] = useState(false);
@@ -55,6 +56,29 @@ function CheckoutForm({ email, onSuccess, onError }: CheckoutFormProps) {
       // サブスクリプションを作成する処理を追加します
       
       // 今はテストとして成功扱い
+      // Edge Function に paymentMethodId を送信
+      const response = await fetch(
+  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-subscription`,
+  {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+    },
+    body: JSON.stringify({
+      paymentMethodId: paymentMethod.id,
+      email: email,
+      userId: userId,
+    }),
+  }
+);
+
+const data = await response.json();
+
+if (!response.ok) {
+  throw new Error(data.error || 'サブスクリプション作成に失敗しました');
+}
+
       onSuccess();
     } catch (err: any) {
       console.error('決済エラー:', err);
@@ -73,6 +97,7 @@ function CheckoutForm({ email, onSuccess, onError }: CheckoutFormProps) {
         <div className="p-4 border border-gray-300 rounded-md">
           <CardElement
             options={{
+              hidePostalCode: true,
               style: {
                 base: {
                   fontSize: '16px',
@@ -132,11 +157,12 @@ function CheckoutForm({ email, onSuccess, onError }: CheckoutFormProps) {
 
 interface StripeCheckoutProps {
   email: string;
+  userId: string;
   onSuccess: () => void;
   onError: (error: string) => void;
 }
 
-export default function StripeCheckout({ email, onSuccess, onError }: StripeCheckoutProps) {
+export default function StripeCheckout({ email, userId, onSuccess, onError }: StripeCheckoutProps) {
   return (
     <div className="max-w-md mx-auto">
       <div className="mb-6">
@@ -147,7 +173,7 @@ export default function StripeCheckout({ email, onSuccess, onError }: StripeChec
       </div>
 
       <Elements stripe={stripePromise}>
-        <CheckoutForm email={email} onSuccess={onSuccess} onError={onError} />
+        <CheckoutForm email={email} userId={userId} onSuccess={onSuccess} onError={onError} />
       </Elements>
     </div>
   );

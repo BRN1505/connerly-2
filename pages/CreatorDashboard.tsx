@@ -5,6 +5,7 @@ import Tag from '../components/Tag';
 import Modal from '../components/Modal';
 import Chat from '../components/Chat';
 import { CREATOR_CATEGORIES } from '../constants';
+import JobDetailModal from '../components/JobDetailModal';
 
 interface CreatorDashboardProps {
   creator?: Creator;
@@ -24,17 +25,21 @@ const paymentFormatter = new Intl.NumberFormat('ja-JP', { style: 'currency', cur
 interface JobCardProps {
   job: Job;
   onApply: () => void;
+  onViewDetails?: () => void; 
   isApplied: boolean;
   isClosed: boolean;
   isGuest: boolean;
 }
 
 // FIX: Changed to a const with React.FC to properly handle the key prop.
-const JobCard: React.FC<JobCardProps> = ({ job, onApply, isApplied, isClosed, isGuest }) => {
+const JobCard: React.FC<JobCardProps> = ({ job, onApply, isApplied, isClosed, isGuest, onViewDetails }) => {
   
   return (
-    <div className="bg-white shadow-md rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-xl">
-      <div className="p-6">
+    <div 
+      className="bg-white shadow-md rounded-lg overflow-hidden transition-shadow duration-300 hover:shadow-xl cursor-pointer"
+      onClick={onViewDetails}
+    >      
+    <div className="p-6">
         <div className="flex justify-between items-start">
           <h3 className="text-xl font-semibold text-gray-900">{job.title}</h3>
           {/* FIX: Added children to the Tag component as it is a required prop. */}
@@ -45,7 +50,10 @@ const JobCard: React.FC<JobCardProps> = ({ job, onApply, isApplied, isClosed, is
         <div className="mt-4 flex justify-between items-center">
           <p className="text-lg font-bold text-indigo-600">{paymentFormatter.format(job.payment)}</p>
           <button
-            onClick={onApply}
+            onClick={(e) => {
+            e.stopPropagation();
+            onApply();
+         }}
             disabled={!isGuest && (isApplied || isClosed)}
             className={`px-4 py-2 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors ${
               isGuest
@@ -169,6 +177,8 @@ function CreatorDashboard({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<CreatorCategory[]>([]);
   const [activeChatJob, setActiveChatJob] = useState<Job | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [isJobDetailOpen, setIsJobDetailOpen] = useState(false);
 
   const pendingScouts = useMemo(() => {
       if (isGuest || !creator) return [];
@@ -272,12 +282,16 @@ function CreatorDashboard({
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredJobs.map(job => (
                     <JobCard
-                    key={job.id}
-                    job={job}
-                    onApply={isGuest ? onLoginClick : () => onApply(job.id)}
-                    isApplied={!isGuest && appliedJobIds.includes(job.id)}
-                    isClosed={job.status !== JobStatus.OPEN}
-                    isGuest={isGuest}
+                      key={job.id}
+                      job={job}
+                      onApply={isGuest ? onLoginClick : () => onApply(job.id)}
+                      onViewDetails={() => {
+                       setSelectedJob(job);
+                       setIsJobDetailOpen(true);
+             }}
+                      isApplied={!isGuest && appliedJobIds.includes(job.id)}
+                      isClosed={job.status !== JobStatus.OPEN}
+                      isGuest={isGuest}
                     />
                 ))}
                 </div>
@@ -340,6 +354,17 @@ function CreatorDashboard({
                 />
             </Modal>
         )}
+        {/* 案件詳細モーダル */}
+      <JobDetailModal
+        job={selectedJob}
+        isOpen={isJobDetailOpen}
+        onClose={() => {
+          setIsJobDetailOpen(false);
+          setSelectedJob(null);
+        }}
+        onApply={selectedJob ? (isGuest ? onLoginClick : () => onApply(selectedJob.id)) : undefined}
+        isApplied={selectedJob ? appliedJobIds.includes(selectedJob.id) : false}
+      />
     </div>
   );
 }

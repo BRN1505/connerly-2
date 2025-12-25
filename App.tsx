@@ -8,6 +8,7 @@ import * as api from './api/supabaseAPI';
 import { supabase } from './supabaseClient'; 
 import StripeCheckout from './StripeCheckout';
 import { sendWelcomeEmail } from './utils/email';
+import { sendNotificationEmail } from './utils/notifications';
 
 import Header from './components/Header';
 import Footer from './components/Footer';
@@ -312,6 +313,24 @@ export default function App() {
 useEffect(() => {
   async function loadData() {
     try {
+      // ログイン状態を復元
+      const savedUser = localStorage.getItem('connerly_currentUser');
+      const loginTime = localStorage.getItem('connerly_loginTime');
+      
+      if (savedUser && loginTime) {
+        const elapsed = Date.now() - parseInt(loginTime);
+        const twentyFourHours = 24 * 60 * 60 * 1000; // 24時間
+        
+        if (elapsed < twentyFourHours) {
+          // 24時間以内ならログイン状態を復元
+          setCurrentUser(JSON.parse(savedUser));
+          setPage(Page.DASHBOARD);
+        } else {
+          // 24時間経過したらログイン情報を削除
+          localStorage.removeItem('connerly_currentUser');
+          localStorage.removeItem('connerly_loginTime');
+        }
+      }
       const [creatorsData, brandsData, jobsData, scoutOffersData, chatData, notificationsData] = await Promise.all([
         api.getAllCreators(),
         api.getAllBrands(),
@@ -341,6 +360,8 @@ useEffect(() => {
   const [showVerificationMessageFor, setShowVerificationMessageFor] = useState<string | null>(null);
   const [showPayment, setShowPayment] = useState(false);
   const [pendingBrandData, setPendingBrandData] = useState<any>(null);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
   useEffect(() => {
     try {
@@ -431,6 +452,9 @@ useEffect(() => {
     setCurrentUser(foundUser);
     setPage(Page.DASHBOARD);
     setLoginModalOpen(false);
+    // ログイン情報を保存（24時間有効）
+    localStorage.setItem('connerly_currentUser', JSON.stringify(foundUser));
+    localStorage.setItem('connerly_loginTime', Date.now().toString());
   } catch (error) {
     console.error('ログインエラー:', error);
     alert('メールアドレスまたはパスワードが正しくありません。');
@@ -522,9 +546,16 @@ const handlePaymentError = (error: string) => {
   addNotification(`決済エラー: ${error}`, 'error');
 };
   const handleLogout = () => {
-    setCurrentUser(null);
-    setPage(Page.HOME);
-  };
+  setShowLogoutConfirm(true); // 確認モーダルを表示
+};
+
+const confirmLogout = () => {
+  setCurrentUser(null);
+  setPage(Page.HOME);
+  setShowLogoutConfirm(false);
+  localStorage.removeItem('connerly_currentUser'); // ログイン情報を削除
+  localStorage.removeItem('connerly_loginTime');
+};
 
 const handlePostJob = async (jobData: { title: string; description: string; payment: number; numberOfCreators: number; }) => {
   console.log('🔥 handlePostJob が呼ばれました!', jobData); 
@@ -609,12 +640,17 @@ const handleApplyJob = useCallback(async (jobId: string) => {
     }));
 
     if (job && brand) {
-      console.log(`--- SIMULATING EMAIL (Apply) ---`);
-      console.log(`To: ${brand.email}`);
-      console.log(`From: system@connerly.com`);
-      console.log(`Subject: [connerly] 新規応募のお知らせ: 「${job.title}」`);
-      console.log(`内容: ${currentUser.name}さんがあなたの案件「${job.title}」に応募しました。ダッシュボードからご確認ください。`);
-      console.log(`---------------------------------`);
+      // ブランドに応募通知メールを送信
+      await sendNotificationEmail({
+        email: brand.email,
+        name: brand.name,
+        type: 'application',
+        data: {
+          jobTitle: job.title,
+          creatorName: currentUser.name,
+        }
+      });
+      
       addNotification(`「${job.title}」に応募しました。${brand.name}に通知が送信されます。`);
     }
   } catch (error) {
@@ -622,7 +658,6 @@ const handleApplyJob = useCallback(async (jobId: string) => {
     addNotification('応募に失敗しました。', 'error');
   }
 }, [currentUser, jobs, brands, addNotification]);
-
 const handleSelectCreator = async (jobId: string, creatorId: string) => {
   try {
     const job = jobs.find(j => j.id === jobId);
@@ -647,14 +682,20 @@ const handleSelectCreator = async (jobId: string, creatorId: string) => {
     }));
 
     if (job && creator) {
-      console.log(`--- SIMULATING EMAIL (Match) ---`);
-      console.log(`To: ${creator.email}`);
-      console.log(`From: system@connerly.com`);
-      console.log(`Subject: [connerly] おめでとうございます!案件に採用されました`);
-      console.log(`内容: ${job.brandName}の案件「${job.title}」に採用されました。今後の流れについてはブランドからの連絡をお待ちください。`);
-      console.log(`--------------------------------`);
-      addNotification(`${creator.name}さんを「${job.title}」の案件に選定しました。`);
+  // クリエイターに採用通知メールを送信
+  await sendNotificationEmail({
+    email: creator.email,
+    name: creator.name,
+    type: 'selection',
+    data: {
+      jobTitle: job.title,
+      brandName: job.brandName,
+      payment: job.payment,
     }
+  });
+  
+  addNotification(`${creator.name}さんを「${job.title}」の案件に選定しました。`);
+}
   } catch (error) {
     console.error('クリエイター選択エラー:', error);
     addNotification('クリエイターの選択に失敗しました。', 'error');
@@ -690,13 +731,18 @@ const handleScoutCreator = async (creatorId: string, jobId: string, message: str
     };
     setScoutOffers(prev => [...prev, scoutOfferWithDetails]);
     
-    console.log(`--- SIMULATING EMAIL (Scout) ---`);
-    console.log(`To: ${creator.email}`);
-    console.log(`From: system@connerly.com`);
-    console.log(`Subject: [connerly] ${currentUser.name}からスカウトが届いています`);
-    console.log(`内容: ${currentUser.name}からスカウトが届きました。ダッシュボードからメッセージを確認し、応募をご検討ください。`);
-    console.log(`---------------------------------`);
-    addNotification(`${creator.name}さんをスカウトしました。通知が送信されます。`);
+    // クリエイターにスカウト通知メールを送信
+await sendNotificationEmail({
+  email: creator.email,
+  name: creator.name,
+  type: 'scout',
+  data: {
+    brandName: currentUser.name,
+    message: message,
+  }
+});
+
+addNotification(`${creator.name}さんをスカウトしました。通知が送信されます。`);
   } catch (error) {
     console.error('スカウトエラー:', error);
     addNotification('スカウトの送信に失敗しました。', 'error');
@@ -756,22 +802,60 @@ const handlePayJob = async (jobId: string) => {
   }
 };
   
-  const handleCancelSubscription = (reason: string, feedback: string) => {
-    if (currentUser?.role !== UserRole.BRAND) return;
-    const brandId = currentUser.id;
-    
+  const handleCancelSubscription = async (reason: string, feedback: string) => {
+  if (currentUser?.role !== UserRole.BRAND) return;
+  
+  try {
+    // Supabase からサブスクリプションを取得
+    const { data: subscription } = await supabase
+      .from('subscriptions')
+      .select('id')
+      .eq('user_id', currentUser.id)
+      .single();
+
+    if (!subscription) {
+      addNotification('サブスクリプションが見つかりません。', 'error');
+      return;
+    }
+
+    // Edge Function を呼び出して Stripe でキャンセル
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-subscription`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          subscriptionId: subscription.id,
+          userId: currentUser.id,
+          cancellationReason: reason,
+        }),
+      }
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'キャンセルに失敗しました');
+    }
+
+    // ローカル state を更新
     const updatedUser = { 
-        ...currentUser, 
-        subscriptionStatus: 'inactive' as SubscriptionStatus,
-        cancellationReason: reason,
-        cancellationFeedback: feedback,
+      ...currentUser, 
+      subscriptionStatus: 'inactive' as SubscriptionStatus,
     };
     
-    const updatedBrands = brands.map(b => b.id === brandId ? updatedUser as Brand : b);
-    
     setCurrentUser(updatedUser);
-    setBrands(updatedBrands);
-  };
+    setBrands(brands.map(b => b.id === currentUser.id ? updatedUser as Brand : b));
+
+    addNotification('サブスクリプションをキャンセルしました。', 'success');
+  } catch (error) {
+    console.error('キャンセルエラー:', error);
+    addNotification(`キャンセルに失敗しました: ${error}`, 'error');
+  }
+};
 
 const handleSendMessage = async (jobId: string, text: string) => {
   if (!currentUser || !text.trim()) return;
@@ -795,6 +879,41 @@ const handleSendMessage = async (jobId: string, text: string) => {
       timestamp: new Date(newMessage.timestamp)
     };
     setChatMessages(prev => [...prev, messageWithDetails]);
+    // 相手にメッセージ通知を送信
+const job = jobs.find(j => j.id === jobId);
+if (job) {
+  // メッセージの相手を特定
+  let recipientEmail = '';
+  let recipientName = '';
+  
+  if (currentUser.role === 'brand') {
+    // ブランドが送信 → クリエイターに通知
+    const creator = creators.find(c => job.selectedCreatorIds.includes(c.id));
+    if (creator) {
+      recipientEmail = creator.email;
+      recipientName = creator.name;
+    }
+  } else {
+    // クリエイターが送信 → ブランドに通知
+    const brand = brands.find(b => b.id === job.brandId);
+    if (brand) {
+      recipientEmail = brand.email;
+      recipientName = brand.name;
+    }
+  }
+  
+  if (recipientEmail) {
+    await sendNotificationEmail({
+      email: recipientEmail,
+      name: recipientName,
+      type: 'message',
+      data: {
+        senderName: currentUser.name,
+        messageText: text.trim(),
+      }
+    });
+  }
+}
   } catch (error) {
     console.error('メッセージ送信エラー:', error);
     addNotification('メッセージの送信に失敗しました。', 'error');
@@ -880,6 +999,7 @@ const handleMarkAllAsRead = useCallback(async () => {
       <Header 
         user={currentUser} 
         onLogout={handleLogout} 
+        onCancel={() => setShowCancelModal(true)} 
         onLoginClick={() => setLoginModalOpen(true)}
         onRegisterClick={() => setRegisterModalOpen(true)}
         onLogoClick={() => setPage(currentUser ? Page.DASHBOARD : Page.HOME)}
@@ -941,6 +1061,65 @@ const handleMarkAllAsRead = useCallback(async () => {
       onError={handlePaymentError}
     />
   )}
+</Modal>
+{/* ログアウト確認モーダル */}
+ <Modal 
+    isOpen={showLogoutConfirm} 
+    onClose={() => setShowLogoutConfirm(false)} 
+    title="ログアウト確認"
+      >
+        <div className="text-center py-4">
+          <p className="text-gray-700 mb-6">本当にログアウトしますか？</p>
+          <div className="flex gap-4 justify-center">
+            <button
+              onClick={() => setShowLogoutConfirm(false)}
+              className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+            >
+              キャンセル
+            </button>
+            <button
+              onClick={confirmLogout}
+              className="px-6 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+              ログアウトする
+            </button>
+          </div>
+        </div>
+  </Modal>
+
+ {/* 解約モーダル */}
+<Modal 
+  isOpen={showCancelModal} 
+  onClose={() => setShowCancelModal(false)} 
+  title="サブスクリプション解約"
+>
+  <div className="text-center py-4">
+    <p className="text-gray-700 mb-6">本当に解約しますか?毎月の課金が停止されます。</p>
+    <textarea
+      id="cancelReason"
+      placeholder="解約理由を入力してください (オプション)"
+      className="w-full p-3 border border-gray-300 rounded-md mb-4"
+      rows={4}
+    />
+    <div className="flex gap-4 justify-center">
+      <button
+        onClick={() => setShowCancelModal(false)}
+        className="px-6 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50"
+      >
+        キャンセル
+      </button>
+      <button
+        onClick={() => {
+          const reason = (document.getElementById('cancelReason') as HTMLTextAreaElement)?.value || '';
+          handleCancelSubscription('user_request', reason);
+          setShowCancelModal(false);
+        }}
+        className="px-6 py-2 bg-red-600 text-white rounded-md hover:bg-red-700"
+      >
+        解約する
+      </button>
+    </div>
+  </div>
 </Modal>
 
       {/* Notification Toasts */}
