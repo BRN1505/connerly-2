@@ -511,13 +511,13 @@ const handleRegister = async (data: any, role: UserRole) => {
 const handlePaymentSuccess = async () => {
   try {
     if (!pendingBrandData) return;
-    
+    const subscriptionId = localStorage.getItem('subscriptionId'); 
     // Supabaseでブランドのsubscription_statusをactiveに更新
     const { data: updatedUser, error } = await supabase
       .from('users')
       .update({ 
         is_verified: true,
-        subscription_status: 'active' 
+        subscription_status: 'active',
       })
       .eq('email', pendingBrandData.email)
       .select()
@@ -806,29 +806,24 @@ const handlePayJob = async (jobId: string) => {
   if (currentUser?.role !== UserRole.BRAND) return;
   
   try {
-    // Supabase からサブスクリプションを取得
-    const { data: subscription } = await supabase
-      .from('subscriptions')
-      .select('id')
-      .eq('user_id', currentUser.id)
-      .single();
+    // localStorage から subscription ID を取得
+  const subscriptionId = localStorage.getItem('subscriptionId');
 
-    if (!subscription) {
-      addNotification('サブスクリプションが見つかりません。', 'error');
-      return;
-    }
+  if (!subscriptionId) {
+  addNotification('サブスクリプションが見つかりません。', 'error');
+  return;
+}
 
-    // Edge Function を呼び出して Stripe でキャンセル
+    // サーバーのエンドポイントを呼び出す
     const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/cancel-subscription`,
+    `http://localhost:3001/api/cancel-subscription`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
         },
         body: JSON.stringify({
-          subscriptionId: subscription.id,
+          subscriptionId: subscriptionId,
           userId: currentUser.id,
           cancellationReason: reason,
         }),
@@ -1057,6 +1052,7 @@ const handleMarkAllAsRead = useCallback(async () => {
   {pendingBrandData && (
     <StripeCheckout 
       email={pendingBrandData.email}
+      userId={pendingBrandData.userId}
       onSuccess={handlePaymentSuccess}
       onError={handlePaymentError}
     />

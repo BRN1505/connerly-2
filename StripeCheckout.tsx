@@ -51,19 +51,20 @@ function CheckoutForm({ email, userId, onSuccess, onError }: CheckoutFormProps) 
       }
 
       console.log('決済方法が作成されました:', paymentMethod);
+      console.log('サーバーURL:', import.meta.env.VITE_SERVER_URL);
+      console.log('🔍 VITE_SERVER_URL:', import.meta.env.VITE_SERVER_URL);
+      console.log('📤 送信するデータ:', {
+  paymentMethodId: paymentMethod.id,
+  email: email,
+  userId: userId,
+});
       
-      // TODO: ここでバックエンドにpaymentMethod.idを送信して、
-      // サブスクリプションを作成する処理を追加します
-      
-      // 今はテストとして成功扱い
-      // Edge Function に paymentMethodId を送信
       const response = await fetch(
-  `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-subscription`,
+  `http://localhost:3001/api/create-subscription`,
   {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
     },
     body: JSON.stringify({
       paymentMethodId: paymentMethod.id,
@@ -73,12 +74,14 @@ function CheckoutForm({ email, userId, onSuccess, onError }: CheckoutFormProps) 
   }
 );
 
-const data = await response.json();
+      const data = await response.json();
 
-if (!response.ok) {
-  throw new Error(data.error || 'サブスクリプション作成に失敗しました');
-}
+      if (!response.ok) {
+        throw new Error(data.error || 'サブスクリプション作成に失敗しました');
+      }
 
+      console.log('サブスクリプション作成成功:', data);
+      localStorage.setItem('subscriptionId', data.subscriptionId); 
       onSuccess();
     } catch (err: any) {
       console.error('決済エラー:', err);
