@@ -6,7 +6,7 @@
   "homepage": "https://brn1505.github.io/connerly-2/",
   "scripts": {
     "dev": "vite",
-    "build": "vite build --outDir docs",
+    "build": "vite build --outDir dist",
     "preview": "vite preview"
   },
   "dependencies": {
